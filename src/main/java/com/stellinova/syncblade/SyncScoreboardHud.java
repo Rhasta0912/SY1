@@ -1,103 +1,80 @@
 package com.stellinova.syncblade;
 
-import com.example.evo.api.IEvoService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.*;
 
 public class SyncScoreboardHud {
 
     private final SyncBladePlugin plugin;
-    private final SyncManager manager;
-    private final IEvoService evo;
 
-    private BukkitTask task;
-
-    public SyncScoreboardHud(SyncBladePlugin plugin, SyncManager manager, IEvoService evo) {
+    public SyncScoreboardHud(SyncBladePlugin plugin) {
         this.plugin = plugin;
-        this.manager = manager;
-        this.evo = evo;
-        start();
+        new Loop().runTaskTimer(plugin, 20L, 20L);
     }
 
-    public void shutdown() {
-        try { if (task != null) task.cancel(); }
-        catch (Throwable ignored) {}
-    }
-
-    private void start() {
-        task = new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Player p : Bukkit.getOnlinePlayers()) {
-                    refresh(p);
+    private class Loop extends BukkitRunnable {
+        @Override
+        public void run() {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (!SyncAccessBridge.canUseSync(p)) {
+                    ScoreboardManager sm = Bukkit.getScoreboardManager();
+                    if (sm == null) continue;
+                    p.setScoreboard(sm.getNewScoreboard());
+                    continue;
                 }
+                refresh(p);
             }
-        }.runTaskTimer(plugin, 20L, 20L);
+        }
     }
 
     public void refresh(Player p) {
-        if (!SyncAccessBridge.canUseSync(p)) {
-            clear(p);
-            return;
-        }
-
         ScoreboardManager sm = Bukkit.getScoreboardManager();
         if (sm == null) return;
 
         Scoreboard sb = sm.getNewScoreboard();
-        Objective o = sb.registerNewObjective(
-                "synchud", "dummy",
+        Objective obj = sb.registerNewObjective(
+                "synchud",
+                "dummy",
                 ChatColor.DARK_PURPLE + "SyncBlade"
         );
-        o.setDisplaySlot(DisplaySlot.SIDEBAR);
+        obj.setDisplaySlot(DisplaySlot.SIDEBAR);
 
         SyncPlayerData d = plugin.data(p);
         long now = System.currentTimeMillis();
-        int evoLvl = SyncEvoBridge.evo(p);
+        int evo = SyncEvoBridge.evo(p);
 
-        long echo = Math.max(0, d.getEchoReadyAt() - now);
-        long rev  = Math.max(0, d.getReverbReadyAt() - now);
-        long cre  = Math.max(0, d.getCrescendoReadyAt() - now);
+        long echoCd = Math.max(0, d.getEchoReadyAt() - now);
+        long revCd  = Math.max(0, d.getReverbReadyAt() - now);
+        long creCd  = Math.max(0, d.getCrescendoReadyAt() - now);
 
         int s = 12;
 
-        line(o, ChatColor.LIGHT_PURPLE + "EVO: " + ChatColor.AQUA + evoLvl, s--);
+        add(obj, ChatColor.LIGHT_PURPLE + "EVO: " + ChatColor.AQUA + evo, s--);
 
-        // Echo
-        if (echo <= 0) line(o, ChatColor.AQUA + "Echo Step: " + ChatColor.GREEN + "Ready", s--);
-        else line(o, ChatColor.AQUA + "Echo Step: " + ChatColor.YELLOW + (echo/1000) + "s", s--);
+        add(obj, ChatColor.AQUA + "Rhythm: " + ChatColor.WHITE + d.getRhythmStacks(), s--);
 
-        // Reverb
-        if (rev <= 0) line(o, ChatColor.AQUA + "Reverb: " + ChatColor.GREEN + "Ready", s--);
-        else line(o, ChatColor.AQUA + "Reverb: " + ChatColor.YELLOW + (rev/1000) + "s", s--);
+        add(obj, ChatColor.GRAY + "Echo Step: " + formatCd(echoCd), s--);
+        add(obj, ChatColor.GRAY + "Reverb: " + formatCd(revCd), s--);
 
-        // Rhythm
-        line(o, ChatColor.DARK_PURPLE + "Rhythm: " +
-                ChatColor.WHITE + d.getRhythmStacks(), s--);
-
-        // Crescendo
-        if (evoLvl < 3) {
-            line(o, ChatColor.DARK_PURPLE + "Crescendo: " + ChatColor.RED + "Locked", s--);
-        } else if (cre <= 0) {
-            line(o, ChatColor.DARK_PURPLE + "Crescendo: " + ChatColor.GREEN + "Ready", s--);
+        if (evo < 3) {
+            add(obj, ChatColor.GRAY + "Crescendo: " + ChatColor.RED + "Locked", s--);
         } else {
-            line(o, ChatColor.DARK_PURPLE + "Crescendo: " + ChatColor.YELLOW + (cre/1000) + "s", s--);
+            add(obj, ChatColor.GRAY + "Crescendo: " + formatCd(creCd), s--);
         }
 
         p.setScoreboard(sb);
     }
 
-    private void clear(Player p) {
-        ScoreboardManager sm = Bukkit.getScoreboardManager();
-        if (sm == null) return;
-        p.setScoreboard(sm.getNewScoreboard());
+    private static String formatCd(long ms) {
+        if (ms <= 0) return ChatColor.GREEN + "Ready";
+        int sec = (int) Math.ceil(ms / 1000.0);
+        return ChatColor.YELLOW + "" + sec + "s";
     }
 
-    private void line(Objective o, String text, int score) {
+    private static void add(Objective o, String text, int score) {
         o.getScore(text).setScore(score);
     }
 }
