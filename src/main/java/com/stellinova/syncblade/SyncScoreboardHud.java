@@ -70,7 +70,9 @@ public class SyncScoreboardHud {
     private static String formatCd(long ms) {
         if (ms <= 0) return ChatColor.GREEN + "Ready";
         int sec = (int) Math.ceil(ms / 1000.0);
-        return ChatColor.YELLOW + sec + "s";
+        // ★ FIX: force string concatenation so ChatColor + int compiles
+        return ChatColor.YELLOW + "" + sec + "s";
+        // or: return ChatColor.YELLOW + String.valueOf(sec) + "s";
     }
 
     private static void add(Objective o, String text, int score) {
