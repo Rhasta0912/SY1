@@ -17,6 +17,8 @@ import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -122,7 +124,7 @@ public class SyncManager implements Listener {
         }
         e.setDamage(e.getDamage() * (1.0 + Math.max(0, rhythmBonus)));
 
-        // Echo Step primed hit
+        // Echo Step primed hit (dash hit) -> bonus + stun
         if (d.isEchoPrimed() && now <= d.getEchoPrimedUntil()) {
             d.setEchoPrimed(false);
 
@@ -137,32 +139,48 @@ public class SyncManager implements Listener {
                     1.0f, 1.4f
             );
 
+            // Evo-scaling stun (root via slow+jump)
+            int stunTicks = switch (evo) {
+                case 1 -> 40; // 2.0s
+                case 2 -> 50; // 2.5s
+                case 3 -> 60; // 3.0s
+                default -> 30; // 1.5s
+            };
+            target.addPotionEffect(new PotionEffect(
+                    PotionEffectType.SLOW, stunTicks, 6, false, false, false
+            ));
+            target.addPotionEffect(new PotionEffect(
+                    PotionEffectType.JUMP, stunTicks, 128, false, false, false
+            ));
+
             e.setDamage(e.getDamage() * 1.20); // extra 20%
         }
 
-        // Reverb Strike echo
+        // Reverb Strike echo: visual aftershocks only (no damage)
         if (d.isReverbPrimed()) {
             if (now <= d.getReverbHitWindowUntil()) {
                 d.setReverbPrimed(false);
 
-                double echoDamage = e.getDamage() * (0.40 + 0.10 * evo);
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        if (!target.isValid() || target.isDead()) return;
-                        target.damage(Math.max(0.0, echoDamage), p);
-                        target.getWorld().spawnParticle(
-                                Particle.SONIC_BOOM,
-                                target.getLocation().add(0, 1.0, 0),
-                                1, 0, 0, 0, 0
-                        );
-                        target.getWorld().playSound(
-                                target.getLocation(),
-                                Sound.BLOCK_NOTE_BLOCK_BIT,
-                                1.0f, 1.9f
-                        );
-                    }
-                }.runTaskLater(plugin, 10L);
+                int pulses = (evo >= 3) ? 3 : 1;
+                for (int i = 0; i < pulses; i++) {
+                    long delay = 10L + (i * 6L);
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            if (!target.isValid() || target.isDead()) return;
+                            target.getWorld().spawnParticle(
+                                    Particle.SONIC_BOOM,
+                                    target.getLocation().add(0, 1.0, 0),
+                                    1, 0, 0, 0, 0
+                            );
+                            target.getWorld().playSound(
+                                    target.getLocation(),
+                                    Sound.BLOCK_NOTE_BLOCK_BIT,
+                                    1.0f, 1.9f
+                            );
+                        }
+                    }.runTaskLater(plugin, delay);
+                }
             } else {
                 d.setReverbPrimed(false);
             }
