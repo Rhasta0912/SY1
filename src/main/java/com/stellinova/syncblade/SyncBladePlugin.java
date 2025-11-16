@@ -19,53 +19,43 @@ public class SyncBladePlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // Resolve Evo service if present
         try {
             evo = Bukkit.getServicesManager().load(IEvoService.class);
         } catch (Throwable ignored) {
             evo = null;
         }
 
-        // Access bridge
         try { SyncAccessBridge.init(this); } catch (Throwable ignored) {}
 
-        // Core systems
         manager = new SyncManager(this);
-        hud = new SyncScoreboardHud(this, manager, evo);
+        hud = new SyncScoreboardHud(this);
 
-        // Command: /syncblade
-        try {
-            if (getCommand("syncblade") != null) {
-                getCommand("syncblade").setExecutor(new SyncCommand(this, manager, hud, evo));
-            }
-        } catch (Throwable ignored) {}
+        if (getCommand("syncblade") != null) {
+            getCommand("syncblade").setExecutor(new SyncCommand(this, manager, hud, evo));
+        }
 
-        // PlaceholderAPI expansion
         try {
             if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
                 new SyncExpansion(this).register();
             }
         } catch (Throwable ignored) {}
 
-        // Prewarm for online players
         for (Player p : Bukkit.getOnlinePlayers()) {
             data(p);
             try { SyncAccessBridge.warm(p); } catch (Throwable ignored) {}
             try { hud.refresh(p); } catch (Throwable ignored) {}
         }
 
-        getLogger().info("SyncBlade v" + getDescription().getVersion() + " enabled.");
+        getLogger().info("SyncBlade enabled.");
     }
 
     @Override
     public void onDisable() {
-        try { if (hud != null) hud.shutdown(); } catch (Throwable ignored) {}
         try { if (manager != null) manager.shutdown(); } catch (Throwable ignored) {}
         data.clear();
         getLogger().info("SyncBlade disabled.");
     }
 
-    /** Per-player data accessor (public so manager/HUD/expansion can reuse). */
     public SyncPlayerData data(Player p) {
         return data.computeIfAbsent(p.getUniqueId(), id -> new SyncPlayerData(id));
     }
@@ -78,7 +68,6 @@ public class SyncBladePlugin extends JavaPlugin {
         try { SyncAccessBridge.warm(p); } catch (Throwable ignored) {}
     }
 
-    /** Called when rune is revoked via /syncblade reset to immediately clear state visuals. */
     public void onRuneRevoked(Player p) {
         if (manager != null) manager.onRuneRevoked(p);
     }
