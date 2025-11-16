@@ -9,14 +9,14 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 /**
- * /sync command:
- *  - /sync status
- *  - /sync rune
- *  - /sync reset
- *  - /sync echo
- *  - /sync reverb
- *  - /sync crescendo
- *  - /sync reload
+ * /syncblade command:
+ *  - /syncblade status
+ *  - /syncblade rune
+ *  - /syncblade reset
+ *  - /syncblade echo
+ *  - /syncblade reverb
+ *  - /syncblade crescendo
+ *  - /syncblade reload
  */
 public class SyncCommand implements CommandExecutor {
 
@@ -34,41 +34,51 @@ public class SyncCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync status");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync rune" + ChatColor.GRAY + " — enable SyncBlade for yourself");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync reset" + ChatColor.GRAY + " — disable SyncBlade");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync echo" + ChatColor.GRAY + " — Echo Step dash");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync reverb" + ChatColor.GRAY + " — prime Reverb Strike");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync crescendo" + ChatColor.GRAY + " — Evo3 ultimate");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/sync reload" + ChatColor.GRAY + " — rebuild HUD");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade status");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade rune" + ChatColor.GRAY + " — enable SyncBlade for yourself");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reset" + ChatColor.GRAY + " — disable SyncBlade");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade echo" + ChatColor.GRAY + " — Echo Step dash");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reverb" + ChatColor.GRAY + " — prime Reverb Strike");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade crescendo" + ChatColor.GRAY + " — Evo3 ultimate");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reload" + ChatColor.GRAY + " — rebuild HUD");
             return true;
         }
 
-        // /sync status
+        // /syncblade status
         if (args[0].equalsIgnoreCase("status")) {
-            if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Players only.");
+                return true;
+            }
             SyncPlayerData d = plugin.data(p);
             int lvl = (evo != null ? evo.getEvoLevel(p.getUniqueId()) : SyncEvoBridge.evo(p));
             boolean can = SyncAccessBridge.canUseSync(p);
+
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "SyncBlade Status");
-            sender.sendMessage(ChatColor.GRAY + "  Rune: " + (can ? ChatColor.GREEN + "SyncBlade" : ChatColor.RED + "No Rune"));
+            sender.sendMessage(ChatColor.GRAY + "  Rune: " + (can ? ChatColor.GREEN + "SyncBlade" : ChatColor.RED + "None"));
             sender.sendMessage(ChatColor.GRAY + "  Evo: " + ChatColor.LIGHT_PURPLE + lvl
                     + ChatColor.GRAY + " (EvoCore " + (evo != null ? "ON" : "OFF") + ")");
             sender.sendMessage(ChatColor.GRAY + "  Rhythm stacks: " + ChatColor.AQUA + d.getRhythmStacks());
+
             long now = System.currentTimeMillis();
             long cdEcho = Math.max(0, d.getEchoReadyAt() - now);
             long cdRev  = Math.max(0, d.getReverbReadyAt() - now);
             long cdCre  = Math.max(0, d.getCrescendoReadyAt() - now);
+
             sender.sendMessage(ChatColor.GRAY + "  Echo Step CD: " + (cdEcho == 0 ? "ready" : (cdEcho / 1000.0) + "s"));
             sender.sendMessage(ChatColor.GRAY + "  Reverb Strike CD: " + (cdRev == 0 ? "ready" : (cdRev / 1000.0) + "s"));
             sender.sendMessage(ChatColor.GRAY + "  Crescendo CD: " + (cdCre == 0 ? "ready" : (cdCre / 1000.0) + "s"));
             return true;
         }
 
-        // /sync rune
+        // /syncblade rune
         if (args[0].equalsIgnoreCase("rune")) {
-            if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Players only.");
+                return true;
+            }
             SyncAccessBridge.grant(p);
             plugin.warmAccess(p);
             hud.refresh(p);
@@ -76,9 +86,12 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /sync reset
+        // /syncblade reset
         if (args[0].equalsIgnoreCase("reset")) {
-            if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Players only.");
+                return true;
+            }
             SyncAccessBridge.revoke(p);
             plugin.onRuneRevoked(p);
             hud.refresh(p);
@@ -86,37 +99,48 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /sync echo
+        // /syncblade echo
         if (args[0].equalsIgnoreCase("echo")) {
-            if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Players only.");
+                return true;
+            }
             manager.triggerEchoStep(p);
             return true;
         }
 
-        // /sync reverb
+        // /syncblade reverb
         if (args[0].equalsIgnoreCase("reverb")) {
-            if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
-            manager.primeReverb(p);
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Players only.");
+                return true;
+            }
+            manager.triggerReverb(p);
             return true;
         }
 
-        // /sync crescendo
+        // /syncblade crescendo
         if (args[0].equalsIgnoreCase("crescendo")) {
-            if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
-            manager.tryCrescendo(p);
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Players only.");
+                return true;
+            }
+            manager.triggerCrescendo(p);
             return true;
         }
 
-        // /sync reload
+        // /syncblade reload
         if (args[0].equalsIgnoreCase("reload")) {
             for (Player pl : Bukkit.getOnlinePlayers()) {
-                try { hud.refresh(pl); } catch (Throwable ignored) {}
+                try {
+                    hud.refresh(pl);
+                } catch (Throwable ignored) {}
             }
             sender.sendMessage(ChatColor.GREEN + "SyncBlade HUD reloaded.");
             return true;
         }
 
-        sender.sendMessage(ChatColor.RED + "Unknown subcommand. Use /sync for help.");
+        sender.sendMessage(ChatColor.RED + "Unknown subcommand. Use /syncblade for help.");
         return true;
     }
 }
