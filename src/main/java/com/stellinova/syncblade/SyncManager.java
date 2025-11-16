@@ -139,19 +139,16 @@ public class SyncManager implements Listener {
                     1.0f, 1.4f
             );
 
-            // Evo-scaled stun (dash connect feel)
+            // Evo-scaled slowness only (no jump boost glitch)
             int stunTicks = switch (evo) {
-                case 1 -> 40; // 2.0s
-                case 2 -> 50; // 2.5s
-                case 3 -> 60; // 3.0s
-                default -> 30; // 1.5s
+                case 1 -> 80;  // 4s
+                case 2 -> 100; // 5s
+                case 3 -> 120; // 6s
+                default -> 60; // 3s
             };
             target.addPotionEffect(new PotionEffect(
-                    PotionEffectType.SLOWNESS, stunTicks, 6, false, false, false
-            ));
-            target.addPotionEffect(new PotionEffect(
-                    PotionEffectType.JUMP_BOOST, stunTicks, 128, false, false, false
-            ));
+                    PotionEffectType.SLOWNESS, stunTicks, 4, false, false, false
+            )); // Slowness V
 
             e.setDamage(e.getDamage() * 1.20); // extra 20%
         }
@@ -161,14 +158,17 @@ public class SyncManager implements Listener {
             if (now <= d.getReverbHitWindowUntil()) {
                 d.setReverbPrimed(false);
 
-                // visual-only aftershocks: 1 pulse normally, 3 pulses at Evo 3
-                int pulses = (evo >= 3) ? 3 : 1;
-                for (int i = 0; i < pulses; i++) {
+                // visual + damage: 1 pulse normally, 3 pulses at Evo 3
+                final int pulseCount = (evo >= 3) ? 3 : 1;
+                final double damagePerPulse = (evo >= 3) ? 3.0 : 1.5; // 3 dmg per pulse at Evo 3
+
+                for (int i = 0; i < pulseCount; i++) {
                     long delay = 10L + (i * 6L);
                     new BukkitRunnable() {
                         @Override
                         public void run() {
                             if (!target.isValid() || target.isDead()) return;
+                            target.damage(damagePerPulse, p);
                             target.getWorld().spawnParticle(
                                     Particle.SONIC_BOOM,
                                     target.getLocation().add(0, 1.0, 0),
