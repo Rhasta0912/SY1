@@ -13,6 +13,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
 /**
@@ -25,15 +26,15 @@ import org.bukkit.util.Vector;
 public class SyncManager implements Listener {
 
     private final SyncBladePlugin plugin;
-    private BukkitRunnable tickTask;
+    private BukkitTask tickTask;
 
     // Tuning
     private static final long RHYTHM_WINDOW_MS = 1600L;
     private static final int[] RHYTHM_CAP = {4, 6, 8, 10};
 
-    private static final long ECHO_CD_BASE_MS      = 6_000L;
-    private static final long REVERB_CD_BASE_MS    = 8_000L;
-    private static final long CRESCENDO_CD_BASE_MS = 120_000L;
+    private static final long ECHO_CD_BASE_MS       = 6_000L;
+    private static final long REVERB_CD_BASE_MS     = 8_000L;
+    private static final long CRESCENDO_CD_BASE_MS  = 120_000L;
     private static final long CRESCENDO_DURATION_MS = 6_000L;
 
     private static final long REVERB_HIT_WINDOW_MS = 2_000L;
@@ -96,7 +97,7 @@ public class SyncManager implements Listener {
         if (d.isEchoPrimed() && now <= d.getEchoPrimedUntil()) {
             d.setEchoPrimed(false);
             // extra punchy crit visual
-            target.getWorld().spawnParticle(Particle.CRIT_MAGIC, target.getLocation().add(0, 1.0, 0),
+            target.getWorld().spawnParticle(Particle.CRIT, target.getLocation().add(0, 1.0, 0),
                     26, 0.45, 0.6, 0.45, 0.04);
             target.getWorld().playSound(target.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.9f, 1.4f);
             e.setDamage(e.getDamage() * 1.20); // +20% on top
@@ -125,7 +126,7 @@ public class SyncManager implements Listener {
 
     /* ---------------------- ability triggers ---------------------- */
 
-    /** Called from /sync echo (or future keybind) — shimmer dash + prime next hit. */
+    /** Called from /syncblade echo (or future bind) — shimmer dash + prime next hit. */
     public void triggerEchoStep(Player p) {
         if (!SyncAccessBridge.canUseSync(p)) return;
         long now = System.currentTimeMillis();
@@ -147,7 +148,7 @@ public class SyncManager implements Listener {
 
         // mirage trail
         p.getWorld().spawnParticle(Particle.END_ROD, p.getLocation(), 20, 0.6, 0.25, 0.6, 0.04);
-        p.getWorld().spawnParticle(Particle.SPELL_INSTANT, p.getLocation(), 22, 0.7, 0.35, 0.7, 0.03);
+        p.getWorld().spawnParticle(Particle.INSTANT_EFFECT, p.getLocation(), 22, 0.7, 0.35, 0.7, 0.03);
         p.getWorld().playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.5f);
 
         d.setEchoPrimed(true);
@@ -158,7 +159,7 @@ public class SyncManager implements Listener {
         sendAB(p, ChatColor.LIGHT_PURPLE + "Echo primed!");
     }
 
-    /** Called from /sync reverb — next hit gets an echo aftershock. */
+    /** Called from /syncblade reverb — next hit gets an echo aftershock. */
     public void primeReverb(Player p) {
         if (!SyncAccessBridge.canUseSync(p)) return;
         long now = System.currentTimeMillis();
@@ -182,7 +183,7 @@ public class SyncManager implements Listener {
         sendAB(p, ChatColor.AQUA + "Reverb primed");
     }
 
-    /** Called from /sync crescendo — Evo3 only. */
+    /** Called from /syncblade crescendo — Evo3 only. */
     public void tryCrescendo(Player p) {
         if (!SyncAccessBridge.canUseSync(p)) return;
         SyncPlayerData d = plugin.data(p);
@@ -205,7 +206,7 @@ public class SyncManager implements Listener {
         p.getWorld().playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.9f, 1.3f);
         p.getWorld().playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1.0f, 2.0f);
         p.getWorld().spawnParticle(Particle.END_ROD, p.getLocation(), 40, 1.2, 0.7, 1.2, 0.05);
-        p.getWorld().spawnParticle(Particle.SPELL_MOB, p.getLocation(), 40, 1.2, 0.8, 1.2, 0.02);
+        p.getWorld().spawnParticle(Particle.INSTANT_EFFECT, p.getLocation(), 40, 1.2, 0.8, 1.2, 0.02);
 
         sendAB(p, ChatColor.DARK_PURPLE + "Crescendo!");
     }
@@ -231,7 +232,7 @@ public class SyncManager implements Listener {
                         d.setCrescendoNextTickAt(now + 450L);
                         p.getWorld().spawnParticle(Particle.END_ROD, p.getLocation().add(0, 1.0, 0),
                                 10, 0.6, 0.4, 0.6, 0.03);
-                        p.getWorld().spawnParticle(Particle.SPELL_MOB, p.getLocation().add(0, 0.4, 0),
+                        p.getWorld().spawnParticle(Particle.INSTANT_EFFECT, p.getLocation().add(0, 0.4, 0),
                                 10, 0.7, 0.5, 0.7, 0.02);
                     }
                 }
@@ -261,7 +262,7 @@ public class SyncManager implements Listener {
     }
 
     private void tinyPulse(Player p) {
-        p.getWorld().spawnParticle(Particle.SPELL_INSTANT, p.getLocation(), 6, 0.3, 0.2, 0.3, 0.01);
+        p.getWorld().spawnParticle(Particle.INSTANT_EFFECT, p.getLocation(), 6, 0.3, 0.2, 0.3, 0.01);
         p.getWorld().playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.8f);
     }
 
