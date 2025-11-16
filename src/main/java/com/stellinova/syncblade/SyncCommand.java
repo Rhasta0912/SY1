@@ -37,16 +37,16 @@ public class SyncCommand implements CommandExecutor {
 
         if (args.length == 0) {
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade status");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade rune" + ChatColor.GRAY + " — enable SyncBlade for yourself");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade rune" + ChatColor.GRAY + " — enable SyncBlade");
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reset" + ChatColor.GRAY + " — disable SyncBlade");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade echo" + ChatColor.GRAY + " — Echo Step dash");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reverb" + ChatColor.GRAY + " — prime Reverb Strike");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade echo" + ChatColor.GRAY + " — Echo Step");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reverb" + ChatColor.GRAY + " — Reverb Strike");
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade crescendo" + ChatColor.GRAY + " — Evo3 ultimate");
-            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reload" + ChatColor.GRAY + " — rebuild HUD");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "/syncblade reload" + ChatColor.GRAY + " — reload HUD");
             return true;
         }
 
-        // /syncblade status
+        // status
         if (args[0].equalsIgnoreCase("status")) {
             if (!(sender instanceof Player p)) {
                 sender.sendMessage("Players only.");
@@ -73,7 +73,7 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /syncblade rune
+        // rune
         if (args[0].equalsIgnoreCase("rune")) {
             if (!(sender instanceof Player p)) {
                 sender.sendMessage("Players only.");
@@ -86,7 +86,7 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /syncblade reset
+        // reset
         if (args[0].equalsIgnoreCase("reset")) {
             if (!(sender instanceof Player p)) {
                 sender.sendMessage("Players only.");
@@ -99,7 +99,7 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /syncblade echo
+        // echo
         if (args[0].equalsIgnoreCase("echo")) {
             if (!(sender instanceof Player p)) {
                 sender.sendMessage("Players only.");
@@ -109,7 +109,7 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /syncblade reverb
+        // reverb
         if (args[0].equalsIgnoreCase("reverb")) {
             if (!(sender instanceof Player p)) {
                 sender.sendMessage("Players only.");
@@ -119,7 +119,7 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /syncblade crescendo
+        // crescendo
         if (args[0].equalsIgnoreCase("crescendo")) {
             if (!(sender instanceof Player p)) {
                 sender.sendMessage("Players only.");
@@ -129,7 +129,7 @@ public class SyncCommand implements CommandExecutor {
             return true;
         }
 
-        // /syncblade reload
+        // reload HUD
         if (args[0].equalsIgnoreCase("reload")) {
             for (Player pl : Bukkit.getOnlinePlayers()) {
                 try {
