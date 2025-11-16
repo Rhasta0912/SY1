@@ -1,0 +1,25 @@
+name: SyncBlade
+main: com.stellinova.syncblade.SyncBladePlugin
+version: 0.2.0
+api-version: '1.21'
+author: Stellinova
+description: High-skill rhythm melee rune — Echo Step, Reverb Strike, Rhythm Flow, Crescendo.
+
+softdepend:
+  - EvoCore
+  - PlaceholderAPI
+
+commands:
+  sync:
+    description: Main command for the SyncBlade rune.
+    usage: /sync
+    aliases: [syncblade]
+    permission: syncblade.command
+
+permissions:
+  syncblade.command:
+    default: true
+  syncblade.use:
+    default: true
+  syncblade.bypass:
+    default: op
