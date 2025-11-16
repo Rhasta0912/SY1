@@ -10,10 +10,10 @@ softdepend:
   - PlaceholderAPI
 
 commands:
-  sync:
+  syncblade:
     description: Main command for the SyncBlade rune.
-    usage: /sync
-    aliases: [syncblade]
+    usage: /syncblade
+    aliases: [sync]
     permission: syncblade.command
 
 permissions:
