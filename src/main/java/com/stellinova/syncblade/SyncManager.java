@@ -32,7 +32,7 @@ import java.util.UUID;
  * Triggers:
  *  - Single SHIFT tap        -> Echo Step
  *  - Double SHIFT tap        -> Reverb Strike
- *  - Double-tap F (swap-hand)-> Crescendo (Evo 3)
+ *  - Double-tap F (swap-hand)-> Crescendo (Evo 3 + 5+ Rhythm)
  *
  * Commands still work:
  *  /syncblade echo, /syncblade reverb, /syncblade crescendo
@@ -49,13 +49,19 @@ public class SyncManager implements Listener {
     // Tuning
     private static final long RHYTHM_WINDOW_MS = 1600L;
 
-    private static final long ECHO_CD_BASE_MS       = 6_000L;
-    private static final long REVERB_CD_BASE_MS     = 8_000L;
-    private static final long CRESCENDO_CD_BASE_MS  = 120_000L;
+    // More cooldown than before (heavier like Winder)
+    private static final long ECHO_CD_BASE_MS       = 9_000L;
+    private static final long REVERB_CD_BASE_MS     = 12_000L;
+    private static final long CRESCENDO_CD_BASE_MS  = 180_000L;
     private static final long CRESCENDO_DURATION_MS = 6_000L;
 
     // double-tap window (ms) for shift/F
     private static final long DOUBLE_TAP_WINDOW_MS = 250L;
+
+    // Hunger costs (heavier like Winder)
+    private static final int ECHO_HUNGER_COST      = 4;  // 2 drumsticks
+    private static final int REVERB_HUNGER_COST    = 5;  // 2.5 drumsticks
+    private static final int CRESCENDO_HUNGER_COST = 8;  // 4 drumsticks
 
     public SyncManager(SyncBladePlugin plugin) {
         this.plugin = plugin;
@@ -82,7 +88,7 @@ public class SyncManager implements Listener {
     }
 
     // ----------------------------------------------------------------------
-    // Combat event: Rhythm, Echo primed, Reverb echo-hit
+    // Combat event: Rhythm, Echo primed, Reverb echo-hit, Ult Echo CDR
     // ----------------------------------------------------------------------
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onHit(EntityDamageByEntityEvent e) {
@@ -161,6 +167,14 @@ public class SyncManager implements Listener {
                 d.setReverbPrimed(false);
             }
         }
+
+        // While Crescendo is active, each hit shaves Echo's cooldown heavily
+        if (now < d.getCrescendoActiveUntil() && d.getEchoReadyAt() > now) {
+            long shave = 600L; // 0.6s per hit
+            long newReady = d.getEchoReadyAt() - shave;
+            if (newReady < now) newReady = now;
+            d.setEchoReadyAt(newReady);
+        }
     }
 
     // ----------------------------------------------------------------------
@@ -192,7 +206,7 @@ public class SyncManager implements Listener {
 
     // ----------------------------------------------------------------------
     // F-key triggers:
-    //  - double tap -> Crescendo (Evo 3)
+    //  - double tap -> Crescendo (Evo 3 + 5+ Rhythm)
     // ----------------------------------------------------------------------
     @EventHandler(ignoreCancelled = true)
     public void onSwap(PlayerSwapHandItemsEvent e) {
@@ -212,7 +226,7 @@ public class SyncManager implements Listener {
         if (now - last <= DOUBLE_TAP_WINDOW_MS && evo >= 3) {
             triggerCrescendo(p);
         }
-        // Single tap F does nothing (just blocks swap) – abilities are on SHIFT
+        // Single tap F does nothing – abilities are on SHIFT
     }
 
     // ----------------------------------------------------------------------
@@ -224,11 +238,21 @@ public class SyncManager implements Listener {
         SyncPlayerData d = plugin.data(p);
         int evo = SyncEvoBridge.evo(p);
 
+        // Hunger gate
+        if (p.getFoodLevel() <= ECHO_HUNGER_COST) {
+            sendAB(p, ChatColor.RED + "Too exhausted to Echo.");
+            pulse(p);
+            return;
+        }
+
         if (now < d.getEchoReadyAt()) {
             sendAB(p, ChatColor.YELLOW + "Echo Step cooling down...");
             pulse(p);
             return;
         }
+
+        // Spend hunger
+        p.setFoodLevel(Math.max(0, p.getFoodLevel() - ECHO_HUNGER_COST));
 
         double mult = SyncEvoBridge.m(p, "echo");
         double distance = (0.9 + 0.2 * evo) * mult;
@@ -258,6 +282,12 @@ public class SyncManager implements Listener {
         d.setEchoPrimedUntil(now + 2500L);
 
         long cd = scaledCd(ECHO_CD_BASE_MS, evo);
+
+        // During Crescendo, Echo CD is sharply reduced
+        if (now < d.getCrescendoActiveUntil()) {
+            cd = (long) (cd * 0.3); // 70% faster while ult is up
+        }
+
         d.setEchoReadyAt(now + cd);
 
         sendAB(p, ChatColor.LIGHT_PURPLE + "Echo primed!");
@@ -272,11 +302,21 @@ public class SyncManager implements Listener {
         SyncPlayerData d = plugin.data(p);
         int evo = SyncEvoBridge.evo(p);
 
+        // Hunger gate
+        if (p.getFoodLevel() <= REVERB_HUNGER_COST) {
+            sendAB(p, ChatColor.RED + "Too exhausted to Reverb.");
+            pulse(p);
+            return;
+        }
+
         if (now < d.getReverbReadyAt()) {
             sendAB(p, ChatColor.YELLOW + "Reverb cooling down...");
             pulse(p);
             return;
         }
+
+        // Spend hunger
+        p.setFoodLevel(Math.max(0, p.getFoodLevel() - REVERB_HUNGER_COST));
 
         long window = 1800L + (evo * 200L);
         d.setReverbPrimed(true);
@@ -311,34 +351,52 @@ public class SyncManager implements Listener {
             sendAB(p, ChatColor.RED + "Crescendo requires Evo 3.");
             return;
         }
+
+        // Flow / hit requirement: need at least 5 Rhythm stacks
+        if (d.getRhythmStacks() < 5) {
+            sendAB(p, ChatColor.RED + "You must build at least 5 Rhythm to Crescendo.");
+            pulse(p);
+            return;
+        }
+
+        // Hunger gate
+        if (p.getFoodLevel() <= CRESCENDO_HUNGER_COST) {
+            sendAB(p, ChatColor.RED + "Too exhausted to Crescendo.");
+            pulse(p);
+            return;
+        }
+
         if (now < d.getCrescendoReadyAt()) {
             sendAB(p, ChatColor.YELLOW + "Crescendo cooling down...");
             pulse(p);
             return;
         }
 
+        // Spend hunger
+        p.setFoodLevel(Math.max(0, p.getFoodLevel() - CRESCENDO_HUNGER_COST));
+
         d.setCrescendoActiveUntil(now + CRESCENDO_DURATION_MS);
         d.setCrescendoReadyAt(now + CRESCENDO_CD_BASE_MS);
 
         p.getWorld().playSound(
-            p.getLocation(),
-            Sound.ENTITY_ENDER_DRAGON_GROWL,
-            0.9f, 1.3f
+                p.getLocation(),
+                Sound.ENTITY_ENDER_DRAGON_GROWL,
+                0.9f, 1.3f
         );
         p.getWorld().playSound(
-            p.getLocation(),
-            Sound.BLOCK_NOTE_BLOCK_BELL,
-            1.0f, 2.0f
+                p.getLocation(),
+                Sound.BLOCK_NOTE_BLOCK_BELL,
+                1.0f, 2.0f
         );
         p.getWorld().spawnParticle(
-            Particle.END_ROD,
-            p.getLocation(),
-            40, 1.2, 0.7, 1.2, 0.05
+                Particle.END_ROD,
+                p.getLocation(),
+                40, 1.2, 0.7, 1.2, 0.05
         );
         p.getWorld().spawnParticle(
-            Particle.INSTANT_EFFECT,
-            p.getLocation(),
-            40, 1.2, 0.8, 1.2, 0.02
+                Particle.INSTANT_EFFECT,
+                p.getLocation(),
+                40, 1.2, 0.8, 1.2, 0.02
         );
 
         sendAB(p, ChatColor.DARK_PURPLE + "Crescendo!");
