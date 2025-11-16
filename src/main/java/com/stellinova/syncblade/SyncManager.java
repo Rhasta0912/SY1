@@ -12,9 +12,15 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * SyncManager — ability logic for SyncBlade:
@@ -22,11 +28,23 @@ import org.bukkit.util.Vector;
  *  - Echo Step
  *  - Reverb Strike
  *  - Crescendo (Evo 3 ult)
+ *
+ * Triggers:
+ *  - Single SHIFT tap        -> Echo Step
+ *  - Double SHIFT tap        -> Reverb Strike
+ *  - Double-tap F (swap-hand)-> Crescendo (Evo 3)
+ *
+ * Commands still work:
+ *  /syncblade echo, /syncblade reverb, /syncblade crescendo
  */
 public class SyncManager implements Listener {
 
     private final SyncBladePlugin plugin;
     private BukkitTask tickTask;
+
+    // timing trackers for inputs
+    private final Map<UUID, Long> lastSneak = new HashMap<>();
+    private final Map<UUID, Long> lastSwapF = new HashMap<>();
 
     // Tuning
     private static final long RHYTHM_WINDOW_MS = 1600L;
@@ -35,6 +53,9 @@ public class SyncManager implements Listener {
     private static final long REVERB_CD_BASE_MS     = 8_000L;
     private static final long CRESCENDO_CD_BASE_MS  = 120_000L;
     private static final long CRESCENDO_DURATION_MS = 6_000L;
+
+    // double-tap window (ms) for shift/F
+    private static final long DOUBLE_TAP_WINDOW_MS = 250L;
 
     public SyncManager(SyncBladePlugin plugin) {
         this.plugin = plugin;
@@ -143,6 +164,58 @@ public class SyncManager implements Listener {
     }
 
     // ----------------------------------------------------------------------
+    // SHIFT triggers:
+    //  - single tap  -> Echo Step
+    //  - double tap  -> Reverb Strike
+    // ----------------------------------------------------------------------
+    @EventHandler(ignoreCancelled = true)
+    public void onSneak(PlayerToggleSneakEvent e) {
+        Player p = e.getPlayer();
+        if (!SyncAccessBridge.canUseSync(p)) return;
+
+        // Only care about starting to sneak (key pressed)
+        if (!e.isSneaking()) return;
+
+        long now = System.currentTimeMillis();
+        UUID id = p.getUniqueId();
+        long last = lastSneak.getOrDefault(id, 0L);
+        lastSneak.put(id, now);
+
+        // Double tap within window => Reverb Strike
+        if (now - last <= DOUBLE_TAP_WINDOW_MS) {
+            triggerReverb(p);
+        } else {
+            // Single tap => Echo Step
+            triggerEchoStep(p);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // F-key triggers:
+    //  - double tap -> Crescendo (Evo 3)
+    // ----------------------------------------------------------------------
+    @EventHandler(ignoreCancelled = true)
+    public void onSwap(PlayerSwapHandItemsEvent e) {
+        Player p = e.getPlayer();
+        if (!SyncAccessBridge.canUseSync(p)) return;
+
+        e.setCancelled(true); // prevent swapping when rune is active
+
+        long now = System.currentTimeMillis();
+        UUID id = p.getUniqueId();
+        long last = lastSwapF.getOrDefault(id, 0L);
+        lastSwapF.put(id, now);
+
+        int evo = SyncEvoBridge.evo(p);
+
+        // Double-tap F within window & Evo 3+ => Crescendo
+        if (now - last <= DOUBLE_TAP_WINDOW_MS && evo >= 3) {
+            triggerCrescendo(p);
+        }
+        // Single tap F does nothing (just blocks swap) – abilities are on SHIFT
+    }
+
+    // ----------------------------------------------------------------------
     // /syncblade echo
     // ----------------------------------------------------------------------
     public void triggerEchoStep(Player p) {
@@ -248,24 +321,24 @@ public class SyncManager implements Listener {
         d.setCrescendoReadyAt(now + CRESCENDO_CD_BASE_MS);
 
         p.getWorld().playSound(
-                p.getLocation(),
-                Sound.ENTITY_ENDER_DRAGON_GROWL,
-                0.9f, 1.3f
+            p.getLocation(),
+            Sound.ENTITY_ENDER_DRAGON_GROWL,
+            0.9f, 1.3f
         );
         p.getWorld().playSound(
-                p.getLocation(),
-                Sound.BLOCK_NOTE_BLOCK_BELL,
-                1.0f, 2.0f
+            p.getLocation(),
+            Sound.BLOCK_NOTE_BLOCK_BELL,
+            1.0f, 2.0f
         );
         p.getWorld().spawnParticle(
-                Particle.END_ROD,
-                p.getLocation(),
-                40, 1.2, 0.7, 1.2, 0.05
+            Particle.END_ROD,
+            p.getLocation(),
+            40, 1.2, 0.7, 1.2, 0.05
         );
         p.getWorld().spawnParticle(
-                Particle.INSTANT_EFFECT,
-                p.getLocation(),
-                40, 1.2, 0.8, 1.2, 0.02
+            Particle.INSTANT_EFFECT,
+            p.getLocation(),
+            40, 1.2, 0.8, 1.2, 0.02
         );
 
         sendAB(p, ChatColor.DARK_PURPLE + "Crescendo!");
