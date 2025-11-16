@@ -31,7 +31,7 @@ public class SyncBladePlugin extends JavaPlugin {
 
         // Core systems
         manager = new SyncManager(this);
-        hud = new SyncScoreboardHud(this);
+        hud = new SyncScoreboardHud(this, manager, evo);
 
         // Command: /syncblade
         try {
@@ -59,6 +59,7 @@ public class SyncBladePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        try { if (hud != null) hud.shutdown(); } catch (Throwable ignored) {}
         try { if (manager != null) manager.shutdown(); } catch (Throwable ignored) {}
         data.clear();
         getLogger().info("SyncBlade disabled.");
