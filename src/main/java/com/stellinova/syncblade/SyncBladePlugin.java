@@ -33,10 +33,10 @@ public class SyncBladePlugin extends JavaPlugin {
         manager = new SyncManager(this);
         hud = new SyncScoreboardHud(this);
 
-        // Command: /sync
+        // Command: /syncblade
         try {
-            if (getCommand("sync") != null) {
-                getCommand("sync").setExecutor(new SyncCommand(this, manager, hud, evo));
+            if (getCommand("syncblade") != null) {
+                getCommand("syncblade").setExecutor(new SyncCommand(this, manager, hud, evo));
             }
         } catch (Throwable ignored) {}
 
@@ -77,7 +77,7 @@ public class SyncBladePlugin extends JavaPlugin {
         try { SyncAccessBridge.warm(p); } catch (Throwable ignored) {}
     }
 
-    /** Called when rune is revoked via /sync reset to immediately clear state visuals. */
+    /** Called when rune is revoked via /syncblade reset to immediately clear state visuals. */
     public void onRuneRevoked(Player p) {
         if (manager != null) manager.onRuneRevoked(p);
     }
