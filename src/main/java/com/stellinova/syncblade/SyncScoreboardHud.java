@@ -14,7 +14,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * SyncBlade sidebar HUD – Winder/Tide-style, purple themed, no flicker.
+ * SyncBlade sidebar HUD – Winder/Tide style, purple themed, no flicker.
+ * Always shows, but reflects whether the rune is actually active.
  */
 public class SyncScoreboardHud {
 
@@ -33,18 +34,6 @@ public class SyncScoreboardHud {
             if (sm == null) return;
 
             for (Player p : Bukkit.getOnlinePlayers()) {
-                UUID id = p.getUniqueId();
-
-                if (!SyncAccessBridge.canUseSync(p)) {
-                    // If we had a HUD for this player, clear it once and forget
-                    if (boards.containsKey(id)) {
-                        Scoreboard empty = sm.getNewScoreboard();
-                        p.setScoreboard(empty);
-                        boards.remove(id);
-                    }
-                    continue;
-                }
-
                 refresh(p);
             }
         }
@@ -57,7 +46,7 @@ public class SyncScoreboardHud {
         UUID id = p.getUniqueId();
         Scoreboard sb = boards.get(id);
 
-        // Create once and attach to player – no more per-tick swapping
+        // Create once and attach to player – no per-tick swapping.
         if (sb == null) {
             sb = sm.getNewScoreboard();
             boards.put(id, sb);
@@ -69,16 +58,16 @@ public class SyncScoreboardHud {
             obj = sb.registerNewObjective("synchud", "dummy", ChatColor.DARK_PURPLE + "SYNCBLADE");
             obj.setDisplaySlot(DisplaySlot.SIDEBAR);
         } else {
-            // Ensure display slot/title in case something else touched it
             obj.setDisplaySlot(DisplaySlot.SIDEBAR);
             obj.setDisplayName(ChatColor.DARK_PURPLE + "SYNCBLADE");
         }
 
-        // Clear old lines
+        // Clear previous lines
         for (String entry : sb.getEntries()) {
             sb.resetScores(entry);
         }
 
+        boolean hasRune = SyncAccessBridge.canUseSync(p);
         SyncPlayerData d = plugin.data(p);
         long now = System.currentTimeMillis();
         int evo = SyncEvoBridge.evo(p);
@@ -89,34 +78,54 @@ public class SyncScoreboardHud {
         add(obj, ChatColor.DARK_PURPLE + "» " + ChatColor.LIGHT_PURPLE + "Rune Status", score--);
         add(obj, ChatColor.GRAY + "----------------", score--);
 
-        // Rune / Evo / Rhythm
-        add(obj, ChatColor.GRAY + "Rune: " + ChatColor.LIGHT_PURPLE + "SyncBlade", score--);
+        // Rune / Evo
+        if (hasRune) {
+            add(obj, ChatColor.GRAY + "Rune: " + ChatColor.LIGHT_PURPLE + "SyncBlade", score--);
+        } else {
+            add(obj, ChatColor.GRAY + "Rune: " + ChatColor.RED + "None", score--);
+        }
         add(obj, ChatColor.GRAY + "Evo: " + ChatColor.AQUA + evo, score--);
-        add(obj, ChatColor.GRAY + "Rhythm: " + ChatColor.WHITE + d.getRhythmStacks(), score--);
+
+        // Rhythm (only meaningful if rune)
+        int rhythm = hasRune ? d.getRhythmStacks() : 0;
+        add(obj, ChatColor.GRAY + "Rhythm: " + ChatColor.WHITE + rhythm, score--);
 
         add(obj, ChatColor.GRAY + " ", score--);
 
         // Abilities section
-        long echoCd = Math.max(0, d.getEchoReadyAt() - now);
-        long revCd  = Math.max(0, d.getReverbReadyAt() - now);
-        long creCd  = Math.max(0, d.getCrescendoReadyAt() - now);
+        long echoCd = hasRune ? Math.max(0, d.getEchoReadyAt() - now) : 0;
+        long revCd  = hasRune ? Math.max(0, d.getReverbReadyAt() - now) : 0;
+        long creCd  = hasRune ? Math.max(0, d.getCrescendoReadyAt() - now) : 0;
 
         add(obj, ChatColor.DARK_PURPLE + "» " + ChatColor.LIGHT_PURPLE + "Abilities", score--);
 
-        add(obj,
-                ChatColor.GRAY + "Echo Step: " +
-                        (echoCd <= 0 ? ChatColor.GREEN + "READY"
-                                     : ChatColor.YELLOW + formatCd(echoCd)),
-                score--);
+        // Echo
+        String echoLine;
+        if (!hasRune) {
+            echoLine = ChatColor.RED + "NO RUNE";
+        } else if (echoCd <= 0) {
+            echoLine = ChatColor.GREEN + "READY";
+        } else {
+            echoLine = ChatColor.YELLOW + formatCd(echoCd);
+        }
+        add(obj, ChatColor.GRAY + "Echo Step: " + echoLine, score--);
 
-        add(obj,
-                ChatColor.GRAY + "Reverb: " +
-                        (revCd <= 0 ? ChatColor.GREEN + "READY"
-                                    : ChatColor.YELLOW + formatCd(revCd)),
-                score--);
+        // Reverb
+        String revLine;
+        if (!hasRune) {
+            revLine = ChatColor.RED + "NO RUNE";
+        } else if (revCd <= 0) {
+            revLine = ChatColor.GREEN + "READY";
+        } else {
+            revLine = ChatColor.YELLOW + formatCd(revCd);
+        }
+        add(obj, ChatColor.GRAY + "Reverb: " + revLine, score--);
 
+        // Crescendo
         String cresLine;
-        if (evo < 3) {
+        if (!hasRune) {
+            cresLine = ChatColor.RED + "NO RUNE";
+        } else if (evo < 3) {
             cresLine = ChatColor.RED + "LOCKED (Evo 3)";
         } else if (creCd <= 0) {
             cresLine = ChatColor.GREEN + "READY";
@@ -127,11 +136,13 @@ public class SyncScoreboardHud {
 
         add(obj, ChatColor.GRAY + " ", score--);
 
-        // Ult state
-        if (now < d.getCrescendoActiveUntil()) {
+        // Ult state flavor
+        if (hasRune && now < d.getCrescendoActiveUntil()) {
             add(obj, ChatColor.DARK_PURPLE + "Crescendo ACTIVE", score--);
-        } else {
+        } else if (hasRune) {
             add(obj, ChatColor.DARK_PURPLE + "Stay in rhythm", score--);
+        } else {
+            add(obj, ChatColor.DARK_GRAY + "Select a rune", score--);
         }
     }
 
