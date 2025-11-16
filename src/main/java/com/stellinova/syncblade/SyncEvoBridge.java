@@ -8,28 +8,29 @@ import java.util.UUID;
 
 /**
  * Simple Evo bridge for SyncBlade.
- * Uses EF4's IEvoService directly, same style as your other runes.
+ * Uses EvoCore's IEvoService via ServicesManager on each call
+ * so load order never breaks EVO (unlike static init).
  */
 public final class SyncEvoBridge {
 
-    private static IEvoService service;
+    private SyncEvoBridge() {}
 
-    static {
+    private static IEvoService svc() {
         try {
-            service = Bukkit.getServicesManager().load(IEvoService.class);
+            return Bukkit.getServicesManager().load(IEvoService.class);
         } catch (Throwable ignored) {
-            service = null;
+            return null;
         }
     }
 
-    private SyncEvoBridge() {}
-
     /** EVO stage 0..3 from EvoCore. */
     public static int evo(Player p) {
-        if (p == null || service == null) return 0;
+        if (p == null) return 0;
+        IEvoService s = svc();
+        if (s == null) return 0;
         try {
             UUID id = p.getUniqueId();
-            int lvl = service.getEvoLevel(id);
+            int lvl = s.getEvoLevel(id);
             if (lvl < 0) lvl = 0;
             if (lvl > 3) lvl = 3;
             return lvl;
@@ -40,10 +41,12 @@ public final class SyncEvoBridge {
 
     /** Multiplier from EvoCore (defaults 1.0 if anything is off). */
     public static double m(Player p, String key) {
-        if (p == null || service == null || key == null) return 1.0;
+        if (p == null || key == null) return 1.0;
+        IEvoService s = svc();
+        if (s == null) return 1.0;
         try {
             int lvl = evo(p);
-            double v = service.multiplier(key, lvl);
+            double v = s.multiplier(key, lvl);
             if (!Double.isFinite(v) || v <= 0.0) return 1.0;
             return v;
         } catch (Throwable ignored) {
