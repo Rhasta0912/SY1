@@ -124,7 +124,7 @@ public class SyncManager implements Listener {
         }
         e.setDamage(e.getDamage() * (1.0 + Math.max(0, rhythmBonus)));
 
-        // Echo Step primed hit (dash hit) -> bonus + stun
+        // Echo Step primed hit
         if (d.isEchoPrimed() && now <= d.getEchoPrimedUntil()) {
             d.setEchoPrimed(false);
 
@@ -139,7 +139,7 @@ public class SyncManager implements Listener {
                     1.0f, 1.4f
             );
 
-            // Evo-scaling stun (root via slow+jump)
+            // Evo-scaled stun (dash connect feel)
             int stunTicks = switch (evo) {
                 case 1 -> 40; // 2.0s
                 case 2 -> 50; // 2.5s
@@ -147,20 +147,21 @@ public class SyncManager implements Listener {
                 default -> 30; // 1.5s
             };
             target.addPotionEffect(new PotionEffect(
-                    PotionEffectType.SLOW, stunTicks, 6, false, false, false
+                    PotionEffectType.SLOWNESS, stunTicks, 6, false, false, false
             ));
             target.addPotionEffect(new PotionEffect(
-                    PotionEffectType.JUMP, stunTicks, 128, false, false, false
+                    PotionEffectType.JUMP_BOOST, stunTicks, 128, false, false, false
             ));
 
             e.setDamage(e.getDamage() * 1.20); // extra 20%
         }
 
-        // Reverb Strike echo: visual aftershocks only (no damage)
+        // Reverb Strike echo
         if (d.isReverbPrimed()) {
             if (now <= d.getReverbHitWindowUntil()) {
                 d.setReverbPrimed(false);
 
+                // visual-only aftershocks: 1 pulse normally, 3 pulses at Evo 3
                 int pulses = (evo >= 3) ? 3 : 1;
                 for (int i = 0; i < pulses; i++) {
                     long delay = 10L + (i * 6L);
