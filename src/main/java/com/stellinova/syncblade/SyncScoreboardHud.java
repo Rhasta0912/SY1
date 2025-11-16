@@ -9,6 +9,9 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.ScoreboardManager;
 
+/**
+ * SyncBlade sidebar HUD – mirrors Winder/Tide layout style, reskinned in purple.
+ */
 public class SyncScoreboardHud {
 
     private final SyncBladePlugin plugin;
@@ -25,6 +28,7 @@ public class SyncScoreboardHud {
                 if (!SyncAccessBridge.canUseSync(p)) {
                     ScoreboardManager sm = Bukkit.getScoreboardManager();
                     if (sm == null) continue;
+                    // Give an empty board so we don't leak old SyncBlade lines
                     Scoreboard empty = sm.getNewScoreboard();
                     p.setScoreboard(empty);
                     continue;
@@ -37,31 +41,73 @@ public class SyncScoreboardHud {
     public void refresh(Player p) {
         ScoreboardManager sm = Bukkit.getScoreboardManager();
         if (sm == null) return;
+
         Scoreboard sb = sm.getNewScoreboard();
-        Objective obj = sb.registerNewObjective("synchud", "dummy", ChatColor.LIGHT_PURPLE + "SYNCBLADE");
+        Objective obj = sb.registerNewObjective(
+                "synchud",
+                "dummy",
+                ChatColor.DARK_PURPLE + "SYNCBLADE"
+        );
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
 
         SyncPlayerData d = plugin.data(p);
         long now = System.currentTimeMillis();
-
         int evo = SyncEvoBridge.evo(p);
 
-        int score = 12;
-        add(obj, ChatColor.LIGHT_PURPLE + "EVO: " + ChatColor.AQUA + evo, score--);
-        add(obj, ChatColor.AQUA + "Rhythm: " + ChatColor.WHITE + d.getRhythmStacks(), score--);
+        int score = 15;
 
+        // Top title / header
+        add(obj, ChatColor.DARK_PURPLE + "» " + ChatColor.LIGHT_PURPLE + "Rune Status", score--);
+        add(obj, ChatColor.GRAY + "----------------", score--);
+
+        // Rune & Evo
+        add(obj, ChatColor.GRAY + "Rune: " + ChatColor.LIGHT_PURPLE + "SyncBlade", score--);
+        add(obj, ChatColor.GRAY + "Evo: " + ChatColor.AQUA + evo, score--);
+
+        // Rhythm
+        add(obj, ChatColor.GRAY + "Rhythm: " + ChatColor.WHITE + d.getRhythmStacks(), score--);
+
+        add(obj, ChatColor.GRAY + " ", score--);
+
+        // Ability section – styled like Winder/Tide (name + status)
         long echoCd = Math.max(0, d.getEchoReadyAt() - now);
         long revCd  = Math.max(0, d.getReverbReadyAt() - now);
         long creCd  = Math.max(0, d.getCrescendoReadyAt() - now);
 
-        add(obj, ChatColor.GRAY + "Echo Step: " + formatCd(echoCd), score--);
-        add(obj, ChatColor.GRAY + "Reverb: " + formatCd(revCd), score--);
-        add(obj, ChatColor.GRAY + "Crescendo: " + formatCd(creCd), score--);
+        add(obj, ChatColor.DARK_PURPLE + "» " + ChatColor.LIGHT_PURPLE + "Abilities", score--);
 
-        add(obj, ChatColor.GRAY + "", score--);
+        // Echo
+        add(obj,
+                ChatColor.GRAY + "Echo Step: " +
+                (echoCd <= 0 ? ChatColor.GREEN + "READY"
+                             : ChatColor.YELLOW + formatCd(echoCd)),
+                score--);
 
+        // Reverb
+        add(obj,
+                ChatColor.GRAY + "Reverb: " +
+                (revCd <= 0 ? ChatColor.GREEN + "READY"
+                            : ChatColor.YELLOW + formatCd(revCd)),
+                score--);
+
+        // Crescendo
+        String cresLine;
+        if (evo < 3) {
+            cresLine = ChatColor.RED + "LOCKED (Evo 3)";
+        } else if (creCd <= 0) {
+            cresLine = ChatColor.GREEN + "READY";
+        } else {
+            cresLine = ChatColor.YELLOW + formatCd(creCd);
+        }
+        add(obj, ChatColor.GRAY + "Crescendo: " + cresLine, score--);
+
+        add(obj, ChatColor.GRAY + " ", score--);
+
+        // Ult state indicator
         if (now < d.getCrescendoActiveUntil()) {
             add(obj, ChatColor.DARK_PURPLE + "Crescendo ACTIVE", score--);
+        } else {
+            add(obj, ChatColor.DARK_PURPLE + "Stay in rhythm", score--);
         }
 
         p.setScoreboard(sb);
@@ -70,9 +116,8 @@ public class SyncScoreboardHud {
     private static String formatCd(long ms) {
         if (ms <= 0) return ChatColor.GREEN + "Ready";
         int sec = (int) Math.ceil(ms / 1000.0);
-        // ★ FIX: force string concatenation so ChatColor + int compiles
+        // IMPORTANT: force string concat; ChatColor + int alone won't compile.
         return ChatColor.YELLOW + "" + sec + "s";
-        // or: return ChatColor.YELLOW + String.valueOf(sec) + "s";
     }
 
     private static void add(Objective o, String text, int score) {
