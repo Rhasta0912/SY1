@@ -139,7 +139,7 @@ public class SyncManager implements Listener {
                     1.0f, 1.4f
             );
 
-            // Evo-scaled slowness only (no jump boost glitch)
+            // Evo-scaled slowness + horizontal freeze (no bhop escape)
             int stunTicks = switch (evo) {
                 case 1 -> 80;  // 4s
                 case 2 -> 100; // 5s
@@ -150,6 +150,22 @@ public class SyncManager implements Listener {
                     PotionEffectType.SLOWNESS, stunTicks, 4, false, false, false
             )); // Slowness V
 
+            // Freeze horizontal movement for stun duration
+            new BukkitRunnable() {
+                int ticks = 0;
+                @Override
+                public void run() {
+                    if (!target.isValid() || target.isDead() || ticks++ >= stunTicks) {
+                        cancel();
+                        return;
+                    }
+                    Vector v = target.getVelocity();
+                    v.setX(0);
+                    v.setZ(0);
+                    target.setVelocity(v);
+                }
+            }.runTaskTimer(plugin, 0L, 1L);
+
             e.setDamage(e.getDamage() * 1.20); // extra 20%
         }
 
@@ -158,9 +174,9 @@ public class SyncManager implements Listener {
             if (now <= d.getReverbHitWindowUntil()) {
                 d.setReverbPrimed(false);
 
-                // visual + damage: 1 pulse normally, 3 pulses at Evo 3
+                // visual + % max HP damage: total 25% HP, Evo 3 = 3 pulses
                 final int pulseCount = (evo >= 3) ? 3 : 1;
-                final double damagePerPulse = (evo >= 3) ? 3.0 : 1.5; // 3 dmg per pulse at Evo 3
+                final double damagePerPulse = (target.getMaxHealth() * 0.25) / pulseCount;
 
                 for (int i = 0; i < pulseCount; i++) {
                     long delay = 10L + (i * 6L);
@@ -168,7 +184,9 @@ public class SyncManager implements Listener {
                         @Override
                         public void run() {
                             if (!target.isValid() || target.isDead()) return;
+
                             target.damage(damagePerPulse, p);
+
                             target.getWorld().spawnParticle(
                                     Particle.SONIC_BOOM,
                                     target.getLocation().add(0, 1.0, 0),
