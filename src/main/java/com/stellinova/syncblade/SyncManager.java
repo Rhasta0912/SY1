@@ -51,8 +51,9 @@ public class SyncManager implements Listener {
     private final Map<UUID, Long> lastSneak = new HashMap<>();
     private final Map<UUID, Long> lastSwapF = new HashMap<>();
 
-    // Echo stun tracking (so we can block interactions/elytra/etc)
+    // Echo stun tracking (block inputs + elytra) and required hits
     private final Map<UUID, Long> echoStunUntil = new HashMap<>();
+    private final Map<UUID, Integer> echoStunHits = new HashMap<>();
 
     // Tuning
     private static final long RHYTHM_WINDOW_MS = 1600L;
@@ -93,6 +94,7 @@ public class SyncManager implements Listener {
         d.setReverbPrimed(false);
         d.setCrescendoActiveUntil(0L);
         echoStunUntil.remove(p.getUniqueId());
+        echoStunHits.remove(p.getUniqueId());
         sendAB(p, "");
     }
 
@@ -131,54 +133,62 @@ public class SyncManager implements Listener {
         }
         e.setDamage(e.getDamage() * (1.0 + Math.max(0, rhythmBonus)));
 
-        // Echo Step primed hit
+        // Echo Step primed hit (needs 3 hits while primed to actually stun)
         if (d.isEchoPrimed() && now <= d.getEchoPrimedUntil()) {
-            d.setEchoPrimed(false);
+            UUID id = p.getUniqueId();
+            int hits = echoStunHits.getOrDefault(id, 0) + 1;
+            echoStunHits.put(id, hits);
 
+            // Light hit feedback every Echo-primed hit
             target.getWorld().spawnParticle(
                     Particle.CRIT,
                     target.getLocation().add(0, 1.0, 0),
-                    20, 0.4, 0.4, 0.4, 0.01
+                    10, 0.3, 0.3, 0.3, 0.01
             );
             target.getWorld().playSound(
                     target.getLocation(),
                     Sound.ENTITY_PLAYER_ATTACK_CRIT,
-                    1.0f, 1.4f
+                    0.7f, 1.4f
             );
 
-            // Evo-scaled slowness + hard lock (no bhop, no use, no swap, no elytra)
-            int stunTicks = switch (evo) {
-                case 1 -> 80;  // 4s
-                case 2 -> 100; // 5s
-                case 3 -> 120; // 6s
-                default -> 60; // 3s
-            };
-            target.addPotionEffect(new PotionEffect(
-                    PotionEffectType.SLOWNESS, stunTicks, 4, false, false, false
-            )); // Slowness V
+            if (hits >= 3) {
+                // Consume Echo primed and apply real stun only on 3rd hit
+                d.setEchoPrimed(false);
+                echoStunHits.remove(id);
 
-            // Track stun for players so we can cancel their inputs
-            if (target instanceof Player tp) {
-                echoStunUntil.put(tp.getUniqueId(), now + stunTicks * 50L);
-            }
+                int stunTicks = switch (evo) {
+                    case 1 -> 80;  // 4s
+                    case 2 -> 100; // 5s
+                    case 3 -> 120; // 6s
+                    default -> 60; // 3s
+                };
+                target.addPotionEffect(new PotionEffect(
+                        PotionEffectType.SLOWNESS, stunTicks, 4, false, false, false
+                )); // Slowness V
 
-            // Freeze horizontal movement for stun duration
-            new BukkitRunnable() {
-                int ticks = 0;
-                @Override
-                public void run() {
-                    if (!target.isValid() || target.isDead() || ticks++ >= stunTicks) {
-                        cancel();
-                        return;
-                    }
-                    Vector v = target.getVelocity();
-                    v.setX(0);
-                    v.setZ(0);
-                    target.setVelocity(v);
+                if (target instanceof Player tp) {
+                    echoStunUntil.put(tp.getUniqueId(), now + stunTicks * 50L);
                 }
-            }.runTaskTimer(plugin, 0L, 1L);
 
-            e.setDamage(e.getDamage() * 1.20); // extra 20%
+                // Freeze horizontal movement for stun duration
+                new BukkitRunnable() {
+                    int ticks = 0;
+                    @Override
+                    public void run() {
+                        if (!target.isValid() || target.isDead() || ticks++ >= stunTicks) {
+                            cancel();
+                            return;
+                        }
+                        Vector v = target.getVelocity();
+                        v.setX(0);
+                        v.setZ(0);
+                        target.setVelocity(v);
+                    }
+                }.runTaskTimer(plugin, 0L, 1L);
+
+                // Extra 20% bonus damage on the finishing stun hit
+                e.setDamage(e.getDamage() * 1.20);
+            }
         }
 
         // Reverb Strike echo
@@ -186,8 +196,10 @@ public class SyncManager implements Listener {
             if (now <= d.getReverbHitWindowUntil()) {
                 d.setReverbPrimed(false);
 
-                // visual + % max HP damage: 25% per tick; Evo 3 = 3 ticks
+                // Hearts-based damage: total 25% of 10 hearts (5 HP total)
                 final int pulseCount = (evo >= 3) ? 3 : 1;
+                final double totalDamageHp = 5.0; // 2.5 hearts = 5 HP
+                final double damagePerPulseHp = totalDamageHp / pulseCount;
 
                 new BukkitRunnable() {
                     int done = 0;
@@ -197,8 +209,13 @@ public class SyncManager implements Listener {
                             cancel();
                             return;
                         }
-                        double damage = target.getMaxHealth() * 0.25; // 25% per pulse
-                        target.damage(damage, p);
+
+                        double current = target.getHealth();
+                        double max = target.getMaxHealth();
+                        double newHealth = Math.max(0.0, current - damagePerPulseHp);
+                        if (newHealth > max) newHealth = max;
+
+                        target.setHealth(newHealth);
 
                         target.getWorld().spawnParticle(
                                 Particle.SONIC_BOOM,
@@ -238,13 +255,11 @@ public class SyncManager implements Listener {
         Player p = e.getPlayer();
         if (!SyncAccessBridge.canUseSync(p)) return;
 
-        // If stunned by Echo, block sneaking (no weird inputs)
         if (isEchoStunned(p)) {
             e.setCancelled(true);
             return;
         }
 
-        // Only care about starting to sneak (key pressed)
         if (!e.isSneaking()) return;
 
         long now = System.currentTimeMillis();
@@ -252,11 +267,9 @@ public class SyncManager implements Listener {
         long last = lastSneak.getOrDefault(id, 0L);
         lastSneak.put(id, now);
 
-        // Double tap within window => Reverb Strike
         if (now - last <= DOUBLE_TAP_WINDOW_MS) {
             triggerReverb(p);
         } else {
-            // Single tap => Echo Step
             triggerEchoStep(p);
         }
     }
@@ -270,7 +283,6 @@ public class SyncManager implements Listener {
         Player p = e.getPlayer();
         if (!SyncAccessBridge.canUseSync(p)) return;
 
-        // Stunned players can't swap hands
         if (isEchoStunned(p)) {
             e.setCancelled(true);
             return;
@@ -285,11 +297,9 @@ public class SyncManager implements Listener {
 
         int evo = SyncEvoBridge.evo(p);
 
-        // Double-tap F within window & Evo 3+ => Crescendo
         if (now - last <= DOUBLE_TAP_WINDOW_MS && evo >= 3) {
             triggerCrescendo(p);
         }
-        // Single tap F does nothing – abilities are on SHIFT
     }
 
     // ----------------------------------------------------------------------
@@ -301,7 +311,6 @@ public class SyncManager implements Listener {
         SyncPlayerData d = plugin.data(p);
         int evo = SyncEvoBridge.evo(p);
 
-        // Hunger gate
         if (p.getFoodLevel() <= ECHO_HUNGER_COST) {
             sendAB(p, ChatColor.RED + "Too exhausted to Echo.");
             pulse(p);
@@ -314,7 +323,6 @@ public class SyncManager implements Listener {
             return;
         }
 
-        // Spend hunger
         p.setFoodLevel(Math.max(0, p.getFoodLevel() - ECHO_HUNGER_COST));
 
         double mult = SyncEvoBridge.m(p, "echo");
@@ -343,12 +351,11 @@ public class SyncManager implements Listener {
 
         d.setEchoPrimed(true);
         d.setEchoPrimedUntil(now + 2500L);
+        echoStunHits.put(p.getUniqueId(), 0); // reset Echo stun combo hits
 
         long cd = scaledCd(ECHO_CD_BASE_MS, evo);
-
-        // During Crescendo, Echo CD is sharply reduced
         if (now < d.getCrescendoActiveUntil()) {
-            cd = (long) (cd * 0.3); // 70% faster while ult is up
+            cd = (long) (cd * 0.3);
         }
 
         d.setEchoReadyAt(now + cd);
@@ -365,7 +372,6 @@ public class SyncManager implements Listener {
         SyncPlayerData d = plugin.data(p);
         int evo = SyncEvoBridge.evo(p);
 
-        // Hunger gate
         if (p.getFoodLevel() <= REVERB_HUNGER_COST) {
             sendAB(p, ChatColor.RED + "Too exhausted to Reverb.");
             pulse(p);
@@ -378,7 +384,6 @@ public class SyncManager implements Listener {
             return;
         }
 
-        // Spend hunger
         p.setFoodLevel(Math.max(0, p.getFoodLevel() - REVERB_HUNGER_COST));
 
         long window = 1800L + (evo * 200L);
@@ -415,14 +420,12 @@ public class SyncManager implements Listener {
             return;
         }
 
-        // Flow / hit requirement: need at least 5 Rhythm stacks
         if (d.getRhythmStacks() < 5) {
             sendAB(p, ChatColor.RED + "You must build at least 5 Rhythm to Crescendo.");
             pulse(p);
             return;
         }
 
-        // Hunger gate
         if (p.getFoodLevel() <= CRESCENDO_HUNGER_COST) {
             sendAB(p, ChatColor.RED + "Too exhausted to Crescendo.");
             pulse(p);
@@ -435,7 +438,6 @@ public class SyncManager implements Listener {
             return;
         }
 
-        // Spend hunger
         p.setFoodLevel(Math.max(0, p.getFoodLevel() - CRESCENDO_HUNGER_COST));
 
         d.setCrescendoActiveUntil(now + CRESCENDO_DURATION_MS);
@@ -504,13 +506,11 @@ public class SyncManager implements Listener {
 
                 SyncPlayerData d = plugin.data(p);
 
-                // Rhythm decay
                 if (d.getRhythmStacks() > 0 &&
                         now - d.getLastHitAt() > RHYTHM_WINDOW_MS * 2L) {
                     d.setRhythmStacks(0);
                 }
 
-                // Simple actionbar indicator
                 StringBuilder sb = new StringBuilder();
                 sb.append(ChatColor.LIGHT_PURPLE)
                   .append("Rhythm ")
