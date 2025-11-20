@@ -12,6 +12,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityToggleGlideEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -47,6 +50,9 @@ public class SyncManager implements Listener {
     // timing trackers for inputs
     private final Map<UUID, Long> lastSneak = new HashMap<>();
     private final Map<UUID, Long> lastSwapF = new HashMap<>();
+
+    // Echo stun tracking (so we can block interactions/elytra/etc)
+    private final Map<UUID, Long> echoStunUntil = new HashMap<>();
 
     // Tuning
     private static final long RHYTHM_WINDOW_MS = 1600L;
@@ -86,6 +92,7 @@ public class SyncManager implements Listener {
         d.setEchoPrimed(false);
         d.setReverbPrimed(false);
         d.setCrescendoActiveUntil(0L);
+        echoStunUntil.remove(p.getUniqueId());
         sendAB(p, "");
     }
 
@@ -139,7 +146,7 @@ public class SyncManager implements Listener {
                     1.0f, 1.4f
             );
 
-            // Evo-scaled slowness + horizontal freeze (no bhop escape)
+            // Evo-scaled slowness + hard lock (no bhop, no use, no swap, no elytra)
             int stunTicks = switch (evo) {
                 case 1 -> 80;  // 4s
                 case 2 -> 100; // 5s
@@ -149,6 +156,11 @@ public class SyncManager implements Listener {
             target.addPotionEffect(new PotionEffect(
                     PotionEffectType.SLOWNESS, stunTicks, 4, false, false, false
             )); // Slowness V
+
+            // Track stun for players so we can cancel their inputs
+            if (target instanceof Player tp) {
+                echoStunUntil.put(tp.getUniqueId(), now + stunTicks * 50L);
+            }
 
             // Freeze horizontal movement for stun duration
             new BukkitRunnable() {
@@ -174,32 +186,34 @@ public class SyncManager implements Listener {
             if (now <= d.getReverbHitWindowUntil()) {
                 d.setReverbPrimed(false);
 
-                // visual + % max HP damage: total 25% HP, Evo 3 = 3 pulses
+                // visual + % max HP damage: 25% per tick; Evo 3 = 3 ticks
                 final int pulseCount = (evo >= 3) ? 3 : 1;
-                final double damagePerPulse = (target.getMaxHealth() * 0.25) / pulseCount;
 
-                for (int i = 0; i < pulseCount; i++) {
-                    long delay = 10L + (i * 6L);
-                    new BukkitRunnable() {
-                        @Override
-                        public void run() {
-                            if (!target.isValid() || target.isDead()) return;
-
-                            target.damage(damagePerPulse, p);
-
-                            target.getWorld().spawnParticle(
-                                    Particle.SONIC_BOOM,
-                                    target.getLocation().add(0, 1.0, 0),
-                                    1, 0, 0, 0, 0
-                            );
-                            target.getWorld().playSound(
-                                    target.getLocation(),
-                                    Sound.BLOCK_NOTE_BLOCK_BIT,
-                                    1.0f, 1.9f
-                            );
+                new BukkitRunnable() {
+                    int done = 0;
+                    @Override
+                    public void run() {
+                        if (!target.isValid() || target.isDead() || done >= pulseCount) {
+                            cancel();
+                            return;
                         }
-                    }.runTaskLater(plugin, delay);
-                }
+                        double damage = target.getMaxHealth() * 0.25; // 25% per pulse
+                        target.damage(damage, p);
+
+                        target.getWorld().spawnParticle(
+                                Particle.SONIC_BOOM,
+                                target.getLocation().add(0, 1.0, 0),
+                                1, 0, 0, 0, 0
+                        );
+                        target.getWorld().playSound(
+                                target.getLocation(),
+                                Sound.BLOCK_NOTE_BLOCK_BIT,
+                                1.0f, 1.9f
+                        );
+                        done++;
+                    }
+                }.runTaskTimer(plugin, 10L, 6L);
+
             } else {
                 d.setReverbPrimed(false);
             }
@@ -223,6 +237,12 @@ public class SyncManager implements Listener {
     public void onSneak(PlayerToggleSneakEvent e) {
         Player p = e.getPlayer();
         if (!SyncAccessBridge.canUseSync(p)) return;
+
+        // If stunned by Echo, block sneaking (no weird inputs)
+        if (isEchoStunned(p)) {
+            e.setCancelled(true);
+            return;
+        }
 
         // Only care about starting to sneak (key pressed)
         if (!e.isSneaking()) return;
@@ -249,6 +269,12 @@ public class SyncManager implements Listener {
     public void onSwap(PlayerSwapHandItemsEvent e) {
         Player p = e.getPlayer();
         if (!SyncAccessBridge.canUseSync(p)) return;
+
+        // Stunned players can't swap hands
+        if (isEchoStunned(p)) {
+            e.setCancelled(true);
+            return;
+        }
 
         e.setCancelled(true); // prevent swapping when rune is active
 
@@ -440,6 +466,33 @@ public class SyncManager implements Listener {
     }
 
     // ----------------------------------------------------------------------
+    // Extra handlers to enforce Echo stun lock
+    // ----------------------------------------------------------------------
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    public void onItemHeld(PlayerItemHeldEvent e) {
+        Player p = e.getPlayer();
+        if (isEchoStunned(p)) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    public void onInteract(PlayerInteractEvent e) {
+        Player p = e.getPlayer();
+        if (isEchoStunned(p)) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    public void onGlide(EntityToggleGlideEvent e) {
+        if (!(e.getEntity() instanceof Player p)) return;
+        if (isEchoStunned(p) && e.isGliding()) {
+            e.setCancelled(true);
+        }
+    }
+
+    // ----------------------------------------------------------------------
     // Tick loop – decay + small actionbar HUD
     // ----------------------------------------------------------------------
     private final class Tick extends BukkitRunnable {
@@ -475,6 +528,11 @@ public class SyncManager implements Listener {
     // ----------------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------------
+    private boolean isEchoStunned(Player p) {
+        long until = echoStunUntil.getOrDefault(p.getUniqueId(), 0L);
+        return System.currentTimeMillis() < until;
+    }
+
     private long scaledCd(long base, int evo) {
         double factor = switch (evo) {
             case 1 -> 0.9;
